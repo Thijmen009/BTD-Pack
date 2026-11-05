@@ -1,0 +1,41 @@
+name: Release resource pack
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  TAG: ${{ github.event.release.tag_name }}
+
+jobs:
+  server-properties:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add server.properties lines to release notes
+        run: |
+          ASSET=$(gh release view "$TAG" --json assets \
+            -q '[.assets[] | select(.name | endswith(".zip"))][0] // empty | "\(.name) \(.url)"')
+          [ -n "$ASSET" ] || { echo "::error::No .zip attached to the release"; exit 1; }
+          read -r NAME URL <<< "$ASSET"
+
+          gh release download "$TAG" -p "$NAME"
+          SHA1=$(sha1sum "$NAME" | cut -d' ' -f1)
+
+          {
+            gh release view "$TAG" --json body -q .body
+            echo
+            echo '### server.properties'
+            echo '```properties'
+            echo "resource-pack=$URL"
+            echo "resource-pack-id=$(uuidgen)"
+            echo 'resource-pack-prompt={"text":"Bloxcraft Tower Defense Resourcepack","color":"gold"}'
+            echo "resource-pack-sha1=$SHA1"
+            echo '```'
+          } > notes.md
+
+          gh release edit "$TAG" --notes-file notes.md
